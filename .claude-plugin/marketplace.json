@@ -1,0 +1,21 @@
+{
+  "name": "atlas-plugin",
+  "description": "The atlas cataloguing model as a plugin: the skill, and the entry schemas an atlas catalog validates against.",
+  "owner": {
+    "name": "Gergely Nagy",
+    "url": "https://github.com/gnagy"
+  },
+  "plugins": [
+    {
+      "name": "atlas",
+      "source": "./",
+      "description": "The atlas skill, the versioned entry schemas, and the atlas command line that finds them.",
+      "category": "documentation",
+      "keywords": [
+        "atlas",
+        "catalog",
+        "wiki"
+      ]
+    }
+  ]
+}
