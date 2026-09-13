@@ -23,7 +23,7 @@ have in common.
 | `location`    | repo, environment, workspace, material     | Where it is: a URL for a repo, a path for the rest                                           |
 | `project`     | project, workspace                         | Which project this is part of: the parent of a subproject, or the project a workspace places |
 | `checkout-of` | workspace                                  | Which repo this directory is a clone of. Present, the workspace is a checkout                |
-| `namespace`   | project                                    | The catalog whose shared facts these are, when it is not this one                            |
+| `namespace`   | project, repo                              | The catalog whose shared facts these are, when it is not this one                            |
 | `observed`    | environment, workspace, material, optional | When the placement was last verified, if it was recorded from outside its environment        |
 
 Each field answers one question. **Containment is never written**: which workspace holds which
