@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Install this working copy onto the machine as a Claude Code plugin.
+#
+# One target. Claude Code adopts ~/.claude/skills/atlas as the plugin 'atlas', and
+# ~/.local/bin/atlas points into the same tree, so a terminal, a build or an awt
+# config loading a catalog's schema runs exactly what a session runs.
+#
+#   working copy  ──install──▶  ~/.claude/skills/atlas  ──▶  sessions, shells, builds
+#
+# Editing the working copy affects nothing until this runs. Pushing to GitHub is
+# a separate act, for backup. There is no marketplace entry: plugin.json stays at
+# 0.0.0, and a marketplace that pins a version would never see a new snapshot.
+#
+# Usage:  scripts/install            # install (or reinstall) onto this machine
+#         scripts/install --dry-run  # show what would happen
+set -euo pipefail
+
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PLUGIN="$HOME/.claude/skills/atlas"
+BIN="$HOME/.local/bin"
+
+DRY=""
+[[ "${1:-}" == "--dry-run" ]] && DRY="1"
+
+say() { printf '%s\n' "$*"; }
+do_() { if [[ -n "$DRY" ]]; then say "  would: $*"; else "$@"; fi; }
+
+# Running the copy inside the install would make SRC and PLUGIN the same
+# directory, and the rm below would delete its own source.
+if [[ "$SRC" == "$PLUGIN" ]]; then
+  say "refusing to install $PLUGIN onto itself."
+  say "Run scripts/install from the working copy, not from the installed copy."
+  exit 1
+fi
+
+# A marketplace install beside this one would load the skill twice.
+if command -v claude >/dev/null 2>&1 &&
+  claude plugin list 2>/dev/null | grep -Eo 'atlas@[^[:space:]]+' | grep -qv '^atlas@skills-dir$'; then
+  say "atlas is installed from a marketplace, and this install would load beside it."
+  say "Remove that one first:  claude plugin uninstall atlas@<marketplace>"
+  exit 1
+fi
+
+if [[ -n "$(git -C "$SRC" status --porcelain 2>/dev/null)" ]]; then
+  say "note: the working copy has uncommitted changes; they will be installed."
+  say "      Commit first if you want the installed copy to match a commit."
+fi
+
+say "installing $SRC"
+say "       -> $PLUGIN"
+
+do_ mkdir -p "$BIN" "$(dirname "$PLUGIN")"
+
+# Replace wholesale rather than merging, so a deleted file cannot survive an
+# install and keep being loaded. Everything git tracks plus everything it would
+# track: a new, not yet committed file is installed too.
+if [[ -z "$DRY" ]]; then
+  rm -rf "$PLUGIN"
+  mkdir -p "$PLUGIN"
+  git -C "$SRC" ls-files --cached --others --exclude-standard -z |
+    tar -C "$SRC" --null -T - -cf - | tar -C "$PLUGIN" -xf -
+else
+  say "  would: replace $PLUGIN with the working tree (git ls-files -co)"
+fi
+
+do_ ln -sfn "$PLUGIN/bin/atlas" "$BIN/atlas"
+say "  $BIN/atlas -> $PLUGIN/bin/atlas"
+
+if [[ -z "$DRY" ]]; then
+  stamp="$(git -C "$SRC" describe --always --dirty 2>/dev/null || echo unknown)"
+  printf '%s\n' "$stamp" > "$PLUGIN/INSTALLED_FROM"
+  say ""
+  say "installed $("$PLUGIN/bin/atlas" --version)"
+  say ""
+  say "Claude Code adopts $PLUGIN as the plugin 'atlas' from the next session."
+  case ":$PATH:" in
+    *":$BIN:"*) ;;
+    *) say ""; say "WARNING: $BIN is not on PATH." ;;
+  esac
+fi

@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "description": "Keep and use an atlas catalog: the entry schemas an atlas repo validates against, and the atlas command line.",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "author": {
     "name": "Gergely Nagy"
   },

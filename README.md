@@ -42,29 +42,27 @@ loudly rather than skipping validation.
 
 ## Setup
 
-**1. Add the marketplace and install the plugin.** From GitHub, or from a local checkout by path:
+**1. Install from a checkout.** From this repository's root:
 
 ```shell
-claude plugin marketplace add gnagy/atlas-plugin
-claude plugin install atlas@atlas-plugin
+scripts/install
+atlas --version    # atlas 0.0.0 (<commit>)
 ```
 
-**2. Put `atlas` on `PATH`.** Link `~/.local/bin/atlas` to `bin/atlas` in a checkout of this
-repository. The installed copy sits under a versioned plugin cache path that changes on every
-update, so the link points at the checkout; the shim resolves the link to find its schemas.
+The script copies the working copy (`git ls-files -co`) into `~/.claude/skills/atlas`, which Claude
+Code adopts as the plugin `atlas@skills-dir`, and links `~/.local/bin/atlas` into that copy. The
+commit it installed from is in `INSTALLED_FROM`, and `atlas --version` prints it. Editing the checkout
+changes nothing until the script runs again. `plugin.json` stays at `0.0.0`; a snapshot never bumps
+it, and there is no marketplace to install from until a first release above that.
+
+**2. Remove any other copy.** A marketplace install of `atlas` loads beside this one, and the script
+refuses while one is there. A standalone copy of the skill from `gnagy/claude-skills`, at
+`~/.agents/skills/atlas`, loads beside it too.
 
 ```shell
-ln -sfn ~/Dev/Projects/AiSandbox/tools/atlas-plugin/bin/atlas ~/.local/bin/atlas
-atlas schema list
-```
-
-**3. Remove a standalone copy of the skill.** A machine that installed `atlas` from
-`gnagy/claude-skills` has it at `~/.agents/skills/atlas`, symlinked from `~/.claude/skills/atlas`.
-Left in place it loads beside the plugin's copy.
-
-```shell
+claude plugin uninstall atlas@atlas-plugin
+claude plugin marketplace remove atlas-plugin
 npx skills remove atlas -g -y
-ls ~/.claude/skills/atlas ~/.agents/skills/atlas   # both gone
 ```
 
 **Then start a new Claude Code session**; a running one keeps what it already loaded.

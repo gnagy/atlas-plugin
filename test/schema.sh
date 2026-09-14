@@ -41,5 +41,12 @@ check "missing version exits 2" exit_code_is 2 "$ATLAS" schema path
 check "no command exits 2" exit_code_is 2 "$ATLAS"
 check "unknown command exits 2" exit_code_is 2 "$ATLAS" frob
 check "--help exits 0" exit_code_is 0 "$ATLAS" --help
+check "--version names the manifest version and a working copy" test "$("$ATLAS" --version)" = "atlas 0.0.0 (working copy)"
+
+install_dir="$(mktemp -d)"
+cp -R "$ROOT/bin" "$ROOT/.claude-plugin" "$install_dir/"
+printf 'abc1234\n' > "$install_dir/INSTALLED_FROM"
+check "--version names the commit an install recorded" test "$("$install_dir/bin/atlas" --version)" = "atlas 0.0.0 (abc1234)"
+rm -rf "$install_dir"
 
 exit "$failures"

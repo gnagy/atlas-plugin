@@ -23,6 +23,7 @@ atlas: the atlas plugin's command line
 Usage
   atlas schema path <version> [name]   absolute path of a schema this plugin ships; name defaults to entry
   atlas schema list                    the schema versions this plugin ships, one per line
+  atlas --version                      the plugin version and the commit it was installed from
   atlas --help                         this
 
 Exit codes: 0 ok, 1 no such schema, 2 bad usage.
@@ -56,6 +57,17 @@ schema_path() {
   printf '%s\n' "$file"
 }
 
+# `atlas 0.0.0 (<commit>)`. The version is plugin.json's, which stays 0.0.0 for a
+# snapshot; the commit is what scripts/install recorded, so a checkout says so instead.
+version() {
+  local manifest version stamp
+  manifest="$(<"$ROOT/.claude-plugin/plugin.json")"
+  [[ "$manifest" =~ \"version\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]] || die "no version in $ROOT/.claude-plugin/plugin.json" 1
+  version="${BASH_REMATCH[1]}"
+  if [[ -f "$ROOT/INSTALLED_FROM" ]]; then stamp="$(<"$ROOT/INSTALLED_FROM")"; else stamp="working copy"; fi
+  printf 'atlas %s (%s)\n' "$version" "$stamp"
+}
+
 case "${1:-}" in
   schema)
     shift
@@ -76,6 +88,7 @@ case "${1:-}" in
     esac
     ;;
   -h | --help) usage ;;
+  --version) version ;;
   "") usage >&2; exit 2 ;;
   *) die "unknown command: $1 (see atlas --help)" 2 ;;
 esac
