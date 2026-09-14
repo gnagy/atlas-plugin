@@ -1,0 +1,25 @@
+{
+  "description": "Orient a session from the atlas catalog: run `atlas here` on its directory at session start, after a compaction or clear, and for each subagent, and pass the answer on as context",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/atlas-here.sh\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/atlas-here.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

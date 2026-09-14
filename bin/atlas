@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # The atlas plugin's command line. Plain bash while every command is a path lookup;
-# commands that need more move behind this shim to a bun CLI, the way awt's do.
+# commands that need more move behind this shim to a bun CLI, the way awt's do, and
+# keep their output when they do.
 #
 # An atlas repo's awt.config.mjs calls `atlas schema path <version>` to find the entry
 # schema, so the plugin's install location is never written into a repo.
+#
+# `atlas here` answers "what is at this path" from the catalog. The plugin's hooks run
+# it at session start, so orientation needs nothing written into a workspace.
 set -euo pipefail
 
 # Reachable as ~/.local/bin/atlas: resolve the symlink chain to find the plugin root.
@@ -23,10 +27,24 @@ atlas: the atlas plugin's command line
 Usage
   atlas schema path <version> [name]   absolute path of a schema this plugin ships; name defaults to entry
   atlas schema list                    the schema versions this plugin ships, one per line
+  atlas here [path]                    the environment, its catalog, and what is cataloged at path
   atlas --version                      the plugin version and the commit it was installed from
   atlas --help                         this
 
-Exit codes: 0 ok, 1 no such schema, 2 bad usage.
+`atlas here` reads a machine-local config, one catalog checkout per line:
+
+  <environment> <path to the catalog checkout>
+
+from $ATLAS_CONFIG if set, else ${XDG_CONFIG_HOME:-~/.config}/atlas/catalogs. Blank lines
+and lines starting with # are skipped. A path inside a listed checkout uses that line,
+anything else the first. The path defaults to the current directory and need not exist.
+
+It prints one line naming the environment and the catalog. If anything is cataloged at the
+path, a tab-separated table follows: every placement in that environment's section whose
+location contains the path, outermost first, then the projects they name, each after its
+parents. Columns: type, name, project (- for none), entry file.
+
+Exit codes: 0 ok, 1 no such schema or catalog, 2 bad usage, 3 no config.
 EOF
 }
 
@@ -68,7 +86,160 @@ version() {
   printf 'atlas %s (%s)\n' "$version" "$stamp"
 }
 
+config_file() {
+  printf '%s\n' "${ATLAS_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/atlas/catalogs}"
+}
+
+lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# The physical form of a path, so a symlinked directory and its target compare equal:
+# the longest existing ancestor through `pwd -P`, the rest appended as written, so the
+# path need not exist. `~` expands to $HOME.
+physical() {
+  local p="$1" rest=""
+  case "$p" in
+    "~") p="$HOME" ;;
+    "~/"*) p="$HOME/${p#"~/"}" ;;
+    /*) ;;
+    *) p="$PWD/$p" ;;
+  esac
+  while [[ "$p" == */ && "$p" != / ]]; do p="${p%/}"; done
+  while [[ ! -d "$p" ]]; do
+    rest="/${p##*/}$rest"
+    p="${p%/*}"
+    [[ -n "$p" ]] || p=/
+  done
+  p="$(cd "$p" && pwd -P)"
+  [[ "$p" == / && -n "$rest" ]] && p=""
+  printf '%s\n' "$p$rest"
+}
+
+# One tab-separated record per entry file: type, title, project, location, file. Only
+# the fields `here` reads, and only files whose front matter names a type. Dot-directories
+# and node_modules are skipped; they are never the catalog.
+front_matter() {
+  find "$1" -mindepth 1 \( -name '.*' -o -name node_modules \) -prune -o -type f -name '*.md' -print |
+    tr '\n' '\0' |
+    xargs -0 awk '
+      function value(v) {
+        sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v)
+        if (v ~ /^".*"$/ || v ~ /^\047.*\047$/) v = substr(v, 2, length(v) - 2)
+        gsub(/\t/, " ", v)
+        return v
+      }
+      { sub(/\r$/, "") }
+      FNR == 1 { t = ti = pr = lo = ""; if ($0 != "---") nextfile; next }
+      $0 == "---" {
+        if (t != "") printf "%s\t%s\t%s\t%s\t%s\n", t, ti, pr, lo, FILENAME
+        nextfile
+      }
+      match($0, /^[A-Za-z][A-Za-z-]*:/) {
+        k = substr($0, 1, RLENGTH - 1); v = value(substr($0, RLENGTH + 1))
+        if (k == "type") t = v
+        else if (k == "title") ti = v
+        else if (k == "project") pr = v
+        else if (k == "location") lo = v
+      }'
+}
+
+# Placements are compared case-insensitively, the default on APFS, and with `~` expanded
+# on both sides, so an entry never has to spell a path the way this machine resolves it.
+here() {
+  local config query lquery home line env path lpath catalog="" environment="" best=0
+  config="$(config_file)"
+  [[ -f "$config" ]] || die "no config at $config (see atlas --help)" 3
+
+  query="$(physical "${1:-$PWD}")"
+  lquery="$(lower "$query")"
+  home="$(physical "$HOME")"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    [[ "$line" =~ ^[[:space:]]*([^[:space:]]+)[[:space:]]+(.*[^[:space:]])[[:space:]]*$ ]] ||
+      die "$config: expected '<environment> <catalog path>', got: $line" 1
+    env="${BASH_REMATCH[1]}"
+    path="$(physical "${BASH_REMATCH[2]}")"
+    lpath="$(lower "$path")"
+    if [[ -z "$catalog" ]]; then catalog="$path" environment="$env"; fi
+    # The deepest checkout containing the path wins, in case two nest.
+    if [[ "$lquery" == "$lpath" || "$lquery" == "${lpath%/}/"* ]] && ((${#lpath} > best)); then
+      catalog="$path" environment="$env" best=${#lpath}
+    fi
+  done <"$config"
+  [[ -n "$catalog" ]] || die "$config lists no catalog" 1
+  [[ -d "$catalog" ]] || die "the $environment catalog at $catalog does not exist" 1
+
+  local records
+  records="$(front_matter "$catalog")"
+
+  # The section is the folder holding the environment's own entry, <name>.md.
+  # Values through the environment, not -v, which would read backslashes in a path as escapes.
+  ATLAS_ENV="$environment" ATLAS_QUERY="$lquery" ATLAS_HOME="$home" ATLAS_CATALOG="$catalog" awk -F '\t' '
+    BEGIN { env = ENVIRON["ATLAS_ENV"]; query = ENVIRON["ATLAS_QUERY"]; home = ENVIRON["ATLAS_HOME"]; catalog = ENVIRON["ATLAS_CATALOG"] }
+    function stem(f,   n, parts, s) { n = split(f, parts, "/"); s = parts[n]; sub(/\.md$/, "", s); return s }
+    function norm(l) {
+      if (l == "~") l = home
+      else if (substr(l, 1, 2) == "~/") l = home substr(l, 2)
+      while (length(l) > 1 && substr(l, length(l)) == "/") l = substr(l, 1, length(l) - 1)
+      return tolower(l)
+    }
+    function row(type, name, project, file) {
+      if (!header++) print "type\tname\tproject\tentry"
+      printf "%s\t%s\t%s\t%s\n", type, name, (project == "" ? "-" : project), file
+    }
+    NF >= 5 {
+      n++; type[n] = $1; title[n] = ($2 == "" ? stem($5) : $2); proj[n] = $3; loc[n] = $4; file[n] = $5
+      if ($1 == "project" && !(stem($5) in pentry)) pentry[stem($5)] = n
+      if ($1 == "environment" && stem($5) == env && envfile == "") envfile = $5
+    }
+    END {
+      if (envfile == "") {
+        printf "atlas: no environment entry %s.md in the catalog at %s\n", env, catalog > "/dev/stderr"
+        exit 1
+      }
+      printf "atlas: environment %s, catalog %s\n", env, catalog
+      section = envfile; sub(/\/[^\/]*$/, "", section)
+      rank["environment"] = 1; rank["workspace"] = 2; rank["material"] = 3
+
+      # The placements containing the path, outermost first; at one path, the environment first.
+      for (i = 1; i <= n; i++) {
+        if (!(type[i] in rank) || loc[i] == "" || index(file[i], section "/") != 1) continue
+        l = norm(loc[i])
+        if (l != query && l != "/" && index(query, l "/") != 1) continue
+        m++; hit[m] = i; key[m] = length(l) * 10 + rank[type[i]]
+      }
+      for (a = 2; a <= m; a++)
+        for (b = a; b > 1 && key[b - 1] > key[b]; b--) {
+          t = key[b]; key[b] = key[b - 1]; key[b - 1] = t
+          t = hit[b]; hit[b] = hit[b - 1]; hit[b - 1] = t
+        }
+      for (a = 1; a <= m; a++) { i = hit[a]; row(type[i], title[i], proj[i], file[i]) }
+
+      # The projects they name, each once and after its parents.
+      for (a = 1; a <= m; a++) {
+        p = proj[hit[a]]; depth = 0
+        while (p != "" && !(p in done) && depth < 32) {
+          chain[++depth] = p; done[p] = 1
+          p = (p in pentry) ? proj[pentry[p]] : ""
+        }
+        for (d = depth; d >= 1; d--) {
+          p = chain[d]
+          if (p in pentry) { i = pentry[p]; row("project", title[i], proj[i], file[i]) }
+          else row("project", p, "-", "(no entry)")
+        }
+      }
+    }' <<<"$records"
+}
+
 case "${1:-}" in
+  here)
+    shift
+    [[ $# -le 1 ]] || die "usage: atlas here [path]" 2
+    here "$@"
+    ;;
   schema)
     shift
     case "${1:-}" in

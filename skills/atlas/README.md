@@ -38,4 +38,9 @@ deliberately. **Loading it is not permission to write.** The skill's own body sa
 added to, a region charted and a pointer written only when a person asks. The plugin's root
 `README.md` has the install steps.
 
-Nothing in this directory depends on Claude Code beyond the skill front matter. The model is prose.
+Nothing in this directory depends on Claude Code beyond the skill front matter. The model is
+prose, with one exception: an entry's `type`, `title`, `location` and `project` are fields a
+program reads. The plugin's `atlas here` command answers "what is cataloged at this path" from
+them, and the plugin runs it when a Claude Code session starts, so a session knows where it is
+without anything written into the directory it started in. Any other agent gets the same answer
+by running the command.

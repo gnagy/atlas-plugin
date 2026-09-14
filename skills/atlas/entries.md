@@ -29,6 +29,10 @@ have in common.
 Each field answers one question. **Containment is never written**: which workspace holds which
 is read from the paths in a section, never from a field.
 
+**`type`, `title`, `location` and `project` are read by a program.** `atlas here` finds what
+contains a path from them, so their names and meanings are a contract with the command line as
+well as with the schema. `location` may start with `~`, and is compared case-insensitively.
+
 **The names and values are the schema's.** `schemas/<version>/entry.schema.json` in this plugin
 is the shape an entry is validated against, and `atlas schema path <version>` prints where it is,
 so a catalog's validator config names a version and never a copy. This table says what each field
@@ -114,10 +118,10 @@ git worktree is another workspace in the same environment, not a new one.
 
 Each environment has its own checkout of the catalog and its own section in it, holding every
 placement that exists there. `location` is that checkout's path, so another environment can say
-where the catalog is over there. A session learns which environment it is in from a local-only
-agent file at the catalog checkout, `CLAUDE.local.md` for Claude Code, naming the environment;
-*Finding the catalog* and *Instruction files in an environment* in `SKILL.md` have the rule and
-the file's shape. An environment that is thrown away takes its
+where the catalog is over there. A session learns which environment it is in from the
+machine-local config `atlas here` reads, where a line pairs the environment's name with its
+checkout; *Finding the catalog* in `SKILL.md` has the rule. `atlas here` takes the section to be
+the folder holding the environment's own entry, `<name>.md`, and everything under it. An environment that is thrown away takes its
 section with it; one that is kept costs nothing.
 
 ### workspace
@@ -137,6 +141,10 @@ checkout is the field. So the simplest case, cloning a repo and working in it, i
 project that is one repo is that entry with `project` beside `checkout-of`; a submodule is a
 checkout inside a checkout; a monorepo subdirectory assigned to a subproject is a workspace inside
 a checkout, with `project` and no `checkout-of`.
+
+The prose is also where a direction about the place goes, such as which directory under it is
+worked in and which is only kept. `atlas here` names the entry to every session started under it,
+so nothing about the place needs writing into the directory itself.
 
 A placement dies with its directory. The repo and project entries it named outlive it. A placement
 is a claim about a disk that changes without anyone editing the entry. From inside its environment

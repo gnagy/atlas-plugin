@@ -20,24 +20,41 @@ Usually the user and the agent already know about the catalog, from the prompt o
 `CLAUDE.md`, and use it to look up context about the project that does not need repeating in the
 prompt or copying into several project resources.
 
-### Finding the catalog.
+### Finding the catalog
 
-The user's user-level agent instructions can define where it is stored.
-For Claude Code that is `~/.claude/CLAUDE.md`. One line is enough, for example:
+A machine-local config names the catalog, and the `atlas` command line reads it:
+`~/.config/atlas/catalogs`, or under `$XDG_CONFIG_HOME` where that is set. One catalog checkout per
+line, the environment's name first, then the checkout's path:
 
-```markdown
-My atlas is at ~/atlas, a clone of git@github.com:me/atlas.git. Start at atlas/index.md.
+```text
+laptop ~/atlas
 ```
 
-If there is no such line, ask. Do not search the disk for a catalog, and do not work it out from
-the current directory. The directory matters for orienting, not for finding the catalog.
+**`atlas here [path]`** answers from it. The first line names the environment and the catalog
+checkout. If anything is cataloged at the path, a table follows: every placement in this
+environment's section whose location contains the path, outermost first, then the projects they
+name, each after its parents. Each row gives type, name, project and the entry file. Names and
+paths only; read an entry when a question needs it.
 
-**Which environment this is** comes from the catalog checkout itself: a local-only agent file at
-its root, `CLAUDE.local.md` for Claude Code, names the environment, and that name is the section
-of the catalog whose placements are true here. The file is a one-line import stub; *Instruction
-files in an environment* below says what it imports. One host can hold two checkouts of the catalog,
-each claiming a different environment, which is how a sandbox is told apart from the main one.
-If the checkout has no such file, ask; never guess the environment from the hostname.
+In Claude Code the plugin runs it on the session's directory at session start, again after a
+compaction, and for every subagent, so the answer is usually already in context as a block
+starting `atlas: environment`. Where it is not, run the command.
+
+- **Only the first line**: nothing is cataloged at this path. The catalog is still there for work
+  that starts from a name.
+- **No config** (exit 3): this machine keeps no catalog the tool knows of. Ask. Do not search the
+  disk for a catalog, and do not work it out from the current directory. The directory matters
+  for orienting, not for finding the catalog.
+- **Any other failure**: the config names a catalog or environment that is not there. Say so, and
+  do not guess a replacement.
+
+**Which environment this is** is the config line's, and that name is the section of the catalog
+whose placements are true here. One host can hold two checkouts of the catalog, each on its own
+line with a different environment, which is how a sandbox is told apart from the main one: a path
+inside a listed checkout takes that line, anything else the first. Never guess the environment
+from the hostname. The config is the environment's, written once when the catalog is cloned there,
+and never committed; the environment's entry records the checkout's `location` so another
+environment can say where the catalog is over there.
 
 ### Using the catalog
 
@@ -46,7 +63,8 @@ The steps, in general:
 0. Determine whether you need context from the catalog at all. Use it only where it helps.
 1. Look up the project in the catalog, from whatever named it: the prompt, a `CLAUDE.md`, the
    pointer in the project's own instructions. Then, in this environment's section, the workspaces
-   that name that project, and by path what sits under them.
+   that name that project, and by path what sits under them. Where the work is at the session's
+   own directory, `atlas here` has already made this lookup.
 2. If you cannot reach a catalog, or find nothing relevant in it, tell the user and confirm
    whether to continue.
 3. Narrow the scope within the workspace or project to the work at hand.
@@ -56,7 +74,9 @@ The steps, in general:
 
 ## Orienting
 
-Determine where you need to perform an action and look those resource(s) up in the catalog.
+Determine where you need to perform an action and look those resource(s) up in the catalog. The
+`atlas here` block says where the session is, which is where orienting starts and not necessarily
+where the work is.
 
 For example the CWD may be the project directory while the work is in the wiki, the data directory,
 or another project entirely.
@@ -158,61 +178,13 @@ what this directory is in the model's terms, which project it belongs to, and th
 all by name, with a line saying to find them in your atlas. A project whose facts are shared may
 also name its shared catalog there, because that catalog is the project's and not one person's.
 
-**Where a personal catalog is belongs to the user's side**, in the user-level instructions
-that are never in a repository: `~/.claude/CLAUDE.md` for Claude Code, different in each environment.
-One line there serves every project the user has cataloged; *Finding the catalog* above shows it.
-A config file for this earns itself only when a machine holds more than one catalog or a tool has
-to read the list, and if one ever exists the line points at it, so the agent still discovers
-nothing.
+**Where a personal catalog is belongs to the user's side**, in the machine-local config that is
+never in a repository and differs in each environment. One line there serves every project the user
+has cataloged; *Finding the catalog* above shows it. The tool reads the config and the hook hands
+its answer over, so the agent still discovers nothing.
 
 Keeping the pointer current is part of keeping the catalog. A retired entry or a renamed project
 leaves a stale line here, and nothing else detects it.
-
-## Instruction files in an environment
-
-Claude Code loads `CLAUDE.md` and `CLAUDE.local.md` from the working directory and every
-directory above it, up to the filesystem root, so a file at a workspace is read by every session
-started in any checkout under it. That makes a workspace's `CLAUDE.local.md` the natural home for
-the personal pointer a shared repository's root cannot carry. **The file is the environment's own
-instruction file for that place, not an atlas format**: it holds whatever a session there should
-know, and atlas contributes one line of it, which workspace this is, in which environment, of
-which project, and the entry to open. The skill recognises nothing about the file.
-
-**The content is versioned in the catalog and delivered by an import stub.** The file on disk is
-one line, created when the workspace's entry is and never edited afterwards:
-
-```markdown
-@~/atlas/instructions/environments/maci/shelton-workspace.md
-```
-
-The file it names holds the content, and composes shared pieces by relative path, which is the
-same in every checkout of the catalog:
-
-```markdown
-@../../projects/shelton.md
-@../maci.md
-
-Open this workspace in IntelliJ; the six checkouts are its modules.
-```
-
-- `instructions/projects/<project>.md` is what is true of the project everywhere: how to work
-  on it, what to read first.
-- `instructions/environments/<name>.md` is what is true of the environment everywhere: its
-  tooling, its quirks. The catalog checkout's own `CLAUDE.local.md` is a stub importing this file,
-  which is where the environment claim in *Finding the catalog* lives.
-- `instructions/environments/<name>/<entry>.md` is what only that placement knows.
-
-**Write where the answer changes**, as with `project` on entries: files stack up the tree in
-order, so the outermost workspace of a project says project and environment, and a nested one
-says only what differs. The directory sits outside the wiki, since these are not notes, and
-mirrors the entries: one file per entry that has anything to say.
-
-Three costs, so nobody is surprised by them. Claude Code asks once per project before following
-an import that resolves outside the working directory, and declining silences the whole chain
-there without asking again; `/context` shows what loaded. Other agents do not follow imports, so
-to them the stub is an empty file. And a stub inside a checkout of someone else's repository is
-ignored by nothing unless the environment's global git excludes name it. **No secrets in any of
-these files**: their content lands in every session's context, and the catalog is a repository.
 
 ## Keeping a catalog
 
